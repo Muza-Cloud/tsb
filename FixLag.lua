@@ -9,8 +9,6 @@ local thrown_rules = {
 }
 
 local map_decor_rules = {
-    { path = "Map.Halloween", mode = "visual" },
-    { path = "Map.Trash", mode = "visual" },
     { path = "Map.Trees", mode = "visual" },
     { path = "Map.FX", mode = "visual" },
     { path = "CandyVisuals", mode = "visual" },
