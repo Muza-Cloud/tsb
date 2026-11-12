@@ -121,7 +121,7 @@ local terrain_properties = {
 }
 
 local startup_stagger = 0.3
-local gui_url = "https://raw.githubusercontent.com/Muza-Cloud/tsb/main/FixLagGui.lua
+local gui_url = "https://raw.githubusercontent.com/Muza-Cloud/tsb/main/FixLagGui.lua"
 
 local function get_property(instance, property)
     return instance[property]
