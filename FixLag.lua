@@ -1,123 +1,20 @@
 local lighting = game:GetService("Lighting")
 local workspace = game:GetService("Workspace")
-
 local terrain = workspace.Terrain
-local environment = getgenv and getgenv() or _G
+local base_part_by_class = {}
+local original_values = setmetatable({}, { __mode = "k" })
+local claims_by_owner = {}
 
-local thrown_rules = {
-    { path = "Thrown", mode = "visual", children = true },
+local vm = {}
+local vm_labels = {
+    "Destroy VFX",
+    "Destroy Terrain & Water",
+    "Destroy Debris",
+    "Destroy Decorations",
+    "Gray Sky",
+    "Custom Atmosphere",
+    "FPS UnCap",
 }
-
-local map_decor_rules = {
-    { path = "Map.Trees", mode = "visual" },
-    { path = "Map.FX", mode = "visual" },
-    { path = "CandyVisuals", mode = "visual" },
-}
-
-local disabled = { Enabled = false }
-
-local vfx_overrides = {
-    ParticleEmitter = {
-        Enabled = false,
-        Rate = 0,
-        Lifetime = NumberRange.new(0, 0),
-        Size = NumberSequence.new(0),
-        Transparency = NumberSequence.new(1),
-    },
-    Smoke = { Enabled = false, Opacity = 0 },
-    Trail = { Enabled = false, Transparency = NumberSequence.new(1) },
-    Beam = { Enabled = false, Transparency = NumberSequence.new(1), Width0 = 0, Width1 = 0 },
-    Explosion = { Visible = false },
-    ForceField = { Visible = false },
-    Fire = disabled,
-    Sparkles = disabled,
-    PointLight = disabled,
-    SpotLight = disabled,
-    SurfaceLight = disabled,
-    BloomEffect = disabled,
-    BlurEffect = disabled,
-    ColorCorrectionEffect = disabled,
-    DepthOfFieldEffect = disabled,
-    SunRaysEffect = disabled,
-}
-
-local sky_overrides = {
-    Clouds = disabled,
-    Sky = {
-        SkyboxBk = "rbxassetid://92959017845968",
-        SkyboxFt = "rbxassetid://129304841254693",
-        SkyboxLf = "rbxassetid://129249062260004",
-        SkyboxRt = "rbxassetid://117319232583147",
-        SkyboxUp = "rbxassetid://121193772599100",
-        SkyboxDn = "rbxassetid://115022734343595",
-        SunAngularSize = 0,
-        SunTextureId = "",
-        MoonAngularSize = 0,
-        MoonTextureId = "",
-    },
-}
-
-local atmosphere_properties = {
-    Density = 0,
-    Haze = 0,
-    Glare = 0,
-}
-
-local atmosphere_overrides = {
-    Atmosphere = atmosphere_properties,
-}
-
-local decoration_overrides = {
-    Decal = { Transparency = 1 },
-    Texture = { Transparency = 1 },
-    SpecialMesh = { Scale = Vector3.new(0, 0, 0) },
-    SurfaceGui = disabled,
-    BillboardGui = disabled,
-}
-
-local hidden_part_properties = {
-    CastShadow = false,
-    CanCollide = false,
-    CanTouch = false,
-    CanQuery = false,
-    Transparency = 1,
-    LocalTransparencyModifier = 1,
-}
-
-local visual_part_properties = {
-    CastShadow = false,
-    Transparency = 1,
-    LocalTransparencyModifier = 1,
-}
-
-local matte_part_properties = {
-    Reflectance = 0,
-    CastShadow = false,
-}
-
-local lighting_properties = {
-    ClockTime = 12,
-    GlobalShadows = false,
-    Brightness = 0.8,
-    OutdoorAmbient = Color3.fromRGB(120, 120, 120),
-    Ambient = Color3.fromRGB(120, 120, 120),
-    ExposureCompensation = -0.2,
-    FogStart = 9e9,
-    FogEnd = 9e9,
-    ColorShift_Top = Color3.new(0, 0, 0),
-    ColorShift_Bottom = Color3.new(0, 0, 0),
-}
-
-local terrain_properties = {
-    Decoration = false,
-    WaterWaveSize = 0,
-    WaterWaveSpeed = 0,
-    WaterReflectance = 0,
-    WaterTransparency = 0,
-}
-
-local startup_stagger = 0.3
-local gui_url = "https://raw.githubusercontent.com/Muza-Cloud/tsb/main/FixLagGui.lua"
 
 local function get_property(instance, property)
     return instance[property]
@@ -128,13 +25,43 @@ local function set_property(instance, property, value)
 end
 
 local function values_match(current, target)
-    if type(current) == "number" and type(target) == "number" then
+    local kind = typeof(current)
+    if kind ~= typeof(target) then
+        return false
+    end
+
+    if kind == "number" then
         return math.abs(current - target) <= math.max(1e-4, math.abs(target) * 1e-6)
     end
+
+    if kind == "NumberRange" then
+        return values_match(current.Min, target.Min) and values_match(current.Max, target.Max)
+    end
+
+    if kind == "NumberSequence" or kind == "ColorSequence" then
+        local current_points = current.Keypoints
+        local target_points = target.Keypoints
+        if #current_points ~= #target_points then
+            return false
+        end
+        for index = 1, #current_points do
+            local a = current_points[index]
+            local b = target_points[index]
+            if not values_match(a.Time, b.Time) or not values_match(a.Value, b.Value) then
+                return false
+            end
+            if kind == "NumberSequence" and not values_match(a.Envelope, b.Envelope) then
+                return false
+            end
+        end
+        return true
+    end
+
     return current == target
 end
 
-local function create_throttle(budget)
+local function create_throttle()
+    local budget = 0.002
     local deadline = os.clock() + budget
     return function()
         if os.clock() >= deadline then
@@ -143,8 +70,6 @@ local function create_throttle(budget)
         end
     end
 end
-
-local base_part_by_class = {}
 
 local function is_part(instance)
     if instance == terrain then
@@ -159,11 +84,6 @@ local function is_part(instance)
     end
     return result
 end
-
-local override_store = {}
-
-local original_values = setmetatable({}, { __mode = "k" })
-local claims_by_owner = {}
 
 local function merge_properties(existing, added)
     if existing == nil or existing == added then
@@ -189,6 +109,20 @@ local function find_remaining_claim(instance, property)
     end
     return nil
 end
+
+local function split_path(path)
+    local segments = {}
+    for segment in string.gmatch(tostring(path), "[^%.]+") do
+        segments[#segments + 1] = segment
+    end
+    return segments
+end
+
+local function warn_tagged(message)
+    warn("[fixlag] " .. message)
+end
+
+local override_store = {}
 
 function override_store.claim(owner, instance, properties)
     local claims = claims_by_owner[owner]
@@ -221,7 +155,7 @@ function override_store.release(owner)
         return
     end
 
-    local throttle = create_throttle(0.002)
+    local throttle = create_throttle()
     for instance, properties in pairs(claims) do
         local saved = original_values[instance]
         for property in pairs(properties) do
@@ -245,7 +179,7 @@ function session_class.new()
         active = true,
         connections = {},
         close_callbacks = {},
-        locked_instances = setmetatable({}, { __mode = "k" }),
+        locked_targets = setmetatable({}, { __mode = "k" }),
     }, session_class)
 end
 
@@ -269,7 +203,7 @@ function session_class:override(instance, properties)
     end
 end
 
-local function reapply_when_changed(session, instance, property, value)
+local function watch_property(session, instance, property, targets)
     local ok, signal = pcall(instance.GetPropertyChangedSignal, instance, property)
     if not ok then
         return
@@ -277,7 +211,7 @@ local function reapply_when_changed(session, instance, property, value)
 
     local reapply_pending = false
     session:connect(signal, function()
-        if reapply_pending or values_match(instance[property], value) then
+        if reapply_pending or values_match(instance[property], targets[property]) then
             return
         end
 
@@ -285,7 +219,7 @@ local function reapply_when_changed(session, instance, property, value)
         task.defer(function()
             reapply_pending = false
             if session.active then
-                pcall(set_property, instance, property, value)
+                pcall(set_property, instance, property, targets[property])
             end
         end)
     end)
@@ -298,13 +232,18 @@ function session_class:lock(instance, properties)
 
     override_store.claim(self, instance, properties)
 
-    if self.locked_instances[instance] then
-        return
+    local targets = self.locked_targets[instance]
+    if not targets then
+        targets = {}
+        self.locked_targets[instance] = targets
     end
-    self.locked_instances[instance] = true
 
     for property, value in pairs(properties) do
-        reapply_when_changed(self, instance, property, value)
+        local already_watched = targets[property] ~= nil
+        targets[property] = value
+        if not already_watched then
+            watch_property(self, instance, property, targets)
+        end
     end
 end
 
@@ -354,7 +293,7 @@ function feature_class:enable(delay)
 
         local ok, err = pcall(self.start, session)
         if not ok then
-            warn(string.format("[fixlag] %s failed: %s", self.label, tostring(err)))
+            warn_tagged(string.format("%s failed: %s", self.label, tostring(err)))
         end
     end)
 end
@@ -376,7 +315,7 @@ function feature_class:set_enabled(enabled, delay)
 end
 
 local function for_each_descendant(session, root, handler)
-    local throttle = create_throttle(0.002)
+    local throttle = create_throttle()
     local stack = { root }
 
     while #stack > 0 do
@@ -391,6 +330,31 @@ local function for_each_descendant(session, root, handler)
         end
     end
 end
+
+local vfx_overrides = {
+    ParticleEmitter = {
+        Enabled = false,
+        Rate = 0,
+        Lifetime = NumberRange.new(0, 0),
+        Size = NumberSequence.new(0),
+        Transparency = NumberSequence.new(1),
+    },
+    Smoke = { Enabled = false, Opacity = 0 },
+    Trail = { Enabled = false, Transparency = NumberSequence.new(1) },
+    Beam = { Enabled = false, Transparency = NumberSequence.new(1), Width0 = 0, Width1 = 0 },
+    Explosion = { Visible = false },
+    ForceField = { Visible = false },
+    Fire = { Enabled = false },
+    Sparkles = { Enabled = false },
+    PointLight = { Enabled = false },
+    SpotLight = { Enabled = false },
+    SurfaceLight = { Enabled = false },
+    BloomEffect = { Enabled = false },
+    BlurEffect = { Enabled = false },
+    ColorCorrectionEffect = { Enabled = false },
+    DepthOfFieldEffect = { Enabled = false },
+    SunRaysEffect = { Enabled = false },
+}
 
 local function suppress_effect(session, instance, should_lock, overrides)
     local class_overrides = (overrides or vfx_overrides)[instance.ClassName]
@@ -410,6 +374,25 @@ local function suppress_effect(session, instance, should_lock, overrides)
     return true
 end
 
+local function suppress_under(session, root, overrides, should_lock)
+    local function suppress(instance)
+        suppress_effect(session, instance, should_lock, overrides)
+    end
+
+    session:connect(root.DescendantAdded, suppress)
+    for _, descendant in ipairs(root:GetDescendants()) do
+        suppress(descendant)
+    end
+end
+
+local decoration_classes = {
+    Decal = { Transparency = 1 },
+    Texture = { Transparency = 1 },
+    SpecialMesh = { Scale = Vector3.new(0, 0, 0) },
+    SurfaceGui = { Enabled = false },
+    BillboardGui = { Enabled = false },
+}
+
 local function create_hider(part_properties)
     return function(session, instance)
         if suppress_effect(session, instance, false) then
@@ -421,36 +404,41 @@ local function create_hider(part_properties)
             return
         end
 
-        local decoration = decoration_overrides[instance.ClassName]
+        local decoration = decoration_classes[instance.ClassName]
         if decoration then
             session:override(instance, decoration)
         end
     end
 end
 
+local matte_part = { Reflectance = 0, CastShadow = false }
+
 local actions = {
-    hide = create_hider(hidden_part_properties),
-    visual = create_hider(visual_part_properties),
+    hide = create_hider({
+        CastShadow = false,
+        CanCollide = false,
+        CanTouch = false,
+        CanQuery = false,
+        Transparency = 1,
+        LocalTransparencyModifier = 1,
+    }),
+    visual = create_hider({
+        CastShadow = false,
+        Transparency = 1,
+        LocalTransparencyModifier = 1,
+    }),
     effects = function(session, instance)
         suppress_effect(session, instance, false)
     end,
     matte = function(session, instance)
         if is_part(instance) then
-            session:override(instance, matte_part_properties)
+            session:override(instance, matte_part)
         end
     end,
     destroy = function(_, instance)
         instance:Destroy()
     end,
 }
-
-local function split_path(path)
-    local segments = {}
-    for segment in string.gmatch(tostring(path), "[^%.]+") do
-        segments[#segments + 1] = segment
-    end
-    return segments
-end
 
 local function watch_path(session, segments, on_found)
     local function descend(parent, index)
@@ -482,13 +470,13 @@ local function run_rule(session, rule)
     local mode = rule.mode or "hide"
     local action = actions[mode]
     if not action then
-        warn("[fixlag] unknown mode '" .. tostring(mode) .. "' for path " .. tostring(rule.path))
+        warn_tagged("unknown mode '" .. tostring(mode) .. "' for path " .. tostring(rule.path))
         return
     end
 
     local segments = split_path(rule.path)
     if #segments == 0 then
-        warn("[fixlag] empty path in rules")
+        warn_tagged("empty path in rules")
         return
     end
 
@@ -548,24 +536,21 @@ local function create_rule_starter(rules)
         for _, rule in ipairs(rules) do
             local ok, err = pcall(run_rule, session, rule)
             if not ok then
-                warn("[fixlag] rule failed (" .. tostring(rule.path) .. "): " .. tostring(err))
+                warn_tagged("rule failed (" .. tostring(rule.path) .. "): " .. tostring(err))
             end
         end
     end
 end
 
-local function suppress_under(session, root, overrides, should_lock)
-    local function suppress(instance)
-        suppress_effect(session, instance, should_lock, overrides)
-    end
-
-    session:connect(root.DescendantAdded, suppress)
-    for _, descendant in ipairs(root:GetDescendants()) do
-        suppress(descendant)
-    end
+local function get_quality_level()
+    return settings().Rendering.QualityLevel
 end
 
-local function destroy_vfx(session)
+local function set_quality_level(level)
+    settings().Rendering.QualityLevel = level
+end
+
+vm[1] = function(session)
     local function suppress(instance)
         suppress_effect(session, instance, false)
     end
@@ -575,26 +560,60 @@ local function destroy_vfx(session)
     suppress_under(session, lighting, vfx_overrides, true)
 end
 
-local function destroy_terrain_and_water(session)
-    local has_hidden_access = type(sethiddenproperty) == "function" and type(gethiddenproperty) == "function"
-    local hidden_read, previous_decoration
+vm[2] = function(session)
+    session:override(terrain, {
+        Decoration = false,
+        WaterWaveSize = 0,
+        WaterWaveSpeed = 0,
+        WaterReflectance = 0,
+        WaterTransparency = 0,
+    })
 
-    if has_hidden_access then
-        hidden_read, previous_decoration = pcall(gethiddenproperty, terrain, "Decoration")
+    if type(sethiddenproperty) ~= "function" then
+        return
     end
 
-    session:override(terrain, terrain_properties)
+    local previous_decoration
+    if type(gethiddenproperty) == "function" then
+        local read_ok, value = pcall(gethiddenproperty, terrain, "Decoration")
+        if read_ok and type(value) == "boolean" then
+            previous_decoration = value
+        end
+    end
 
-    if hidden_read then
-        pcall(sethiddenproperty, terrain, "Decoration", false)
+    local applied = pcall(sethiddenproperty, terrain, "Decoration", false)
+    if applied and previous_decoration ~= nil then
         session:on_close(function()
             pcall(sethiddenproperty, terrain, "Decoration", previous_decoration)
         end)
     end
 end
 
-local function gray_sky(session)
-    session:lock(lighting, lighting_properties)
+vm[3] = create_rule_starter({
+    { path = "Thrown", mode = "visual", children = true },
+})
+
+vm[4] = create_rule_starter({
+    { path = "Map.Trees", mode = "destroy" },
+})
+
+local sky_overrides = {
+    Clouds = { Enabled = false },
+    Sky = {
+        SkyboxBk = "rbxassetid://92959017845968",
+        SkyboxFt = "rbxassetid://129304841254693",
+        SkyboxLf = "rbxassetid://129249062260004",
+        SkyboxRt = "rbxassetid://117319232583147",
+        SkyboxUp = "rbxassetid://121193772599100",
+        SkyboxDn = "rbxassetid://115022734343595",
+        SunAngularSize = 0,
+        SunTextureId = "",
+        MoonAngularSize = 0,
+        MoonTextureId = "",
+    },
+}
+
+vm[5] = function(session)
     suppress_under(session, lighting, sky_overrides, true)
     suppress_under(session, terrain, sky_overrides, false)
 
@@ -608,19 +627,23 @@ local function gray_sky(session)
     end
 end
 
-local function custom_atmosphere(session)
-    suppress_under(session, lighting, atmosphere_overrides, true)
+vm[6] = function(session)
+    session:lock(lighting, {
+        ClockTime = 12,
+        GlobalShadows = false,
+        Brightness = 0.8,
+        OutdoorAmbient = Color3.fromRGB(120, 120, 120),
+        Ambient = Color3.fromRGB(120, 120, 120),
+        ExposureCompensation = -0.2,
+        FogStart = 9e9,
+        FogEnd = 9e9,
+        ColorShift_Top = Color3.new(0, 0, 0),
+        ColorShift_Bottom = Color3.new(0, 0, 0),
+    })
+    suppress_under(session, lighting, { Atmosphere = { Density = 0, Haze = 0, Glare = 0 } }, true)
 end
 
-local function get_quality_level()
-    return settings().Rendering.QualityLevel
-end
-
-local function set_quality_level(level)
-    settings().Rendering.QualityLevel = level
-end
-
-local function boost_performance(session)
+vm[7] = function(session)
     local fps_cap_setter = setfpscap or set_fps_cap
     local fps_cap_getter = getfpscap or get_fps_cap
 
@@ -648,30 +671,55 @@ local function boost_performance(session)
     end
 end
 
-local feature_definitions = {
-    { label = "destroy VFX", start = destroy_vfx },
-    { label = "destroy terrain & water", start = destroy_terrain_and_water },
-    { label = "destroy debris", start = create_rule_starter(thrown_rules) },
-    { label = "destroy decorations", start = create_rule_starter(map_decor_rules) },
-    { label = "gray sky", start = gray_sky },
-    { label = "custom Atmosphere", start = custom_atmosphere },
-    { label = "FPS Cap", start = boost_performance },
-}
+local function load_gui()
+    local url = "https://raw.githubusercontent.com/m7za/tsb/main/FixLagGui.lua"
 
-if environment.fixlag_shutdown then
-    pcall(environment.fixlag_shutdown)
+    local ok, err = pcall(function()
+        loadstring(game:HttpGet(url))()
+    end)
+    if not ok then
+        warn_tagged("gui failed: " .. tostring(err))
+    end
+end
+
+local function build_order(count)
+    local order = {}
+    for index = 1, count do
+        order[index] = index
+    end
+
+    for index = count, 2, -1 do
+        local swap = math.random(index)
+        order[index], order[swap] = order[swap], order[index]
+    end
+    return order
+end
+
+local function run_vm(features)
+    local order = build_order(#features)
+    for position, index in ipairs(order) do
+        local feature = features[index]
+        local delay = (position - 1) * 0.3
+        local ok, err = pcall(feature.enable, feature, delay)
+        if not ok then
+            warn_tagged(string.format("%s start failed: %s", feature.label, tostring(err)))
+        end
+    end
+end
+
+if getgenv().fixlag_shutdown then
+    pcall(getgenv().fixlag_shutdown)
 end
 
 local features = {}
-for index, definition in ipairs(feature_definitions) do
-    local feature = feature_class.new(definition)
-    feature:set_enabled(true, (index - 1) * startup_stagger)
-    features[#features + 1] = feature
+for index = 1, #vm do
+    features[index] = feature_class.new({ label = vm_labels[index], start = vm[index] })
 end
 
 local api = {
     features = features,
     session_class = session_class,
+    vm = vm,
 }
 
 local function shutdown()
@@ -681,21 +729,13 @@ local function shutdown()
     for _, feature in ipairs(features) do
         feature:disable()
     end
-    environment.fixlag_core = nil
-    environment.fixlag_shutdown = nil
+    getgenv().fixlag_core = nil
+    getgenv().fixlag_shutdown = nil
 end
 
 api.shutdown = shutdown
-environment.fixlag_core = api
-environment.fixlag_shutdown = shutdown
+getgenv().fixlag_core = api
+getgenv().fixlag_shutdown = shutdown
 
-if gui_url ~= "" then
-    local ok, err = pcall(function()
-        loadstring(game:HttpGet(gui_url))()
-    end)
-    if not ok then
-        warn("[fixlag] gui failed: " .. tostring(err))
-    end
-else
-    warn("[fixlag] gui_url is empty, core runs without gui")
-end
+run_vm(features)
+load_gui()
