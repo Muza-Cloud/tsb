@@ -14,7 +14,6 @@ local map_decor_rules = {
     { path = "Map.Trash", mode = "visual" },
     { path = "Map.Trees", mode = "visual" },
     { path = "Map.FX", mode = "visual" },
-    { path = "HalloweenDoorTrees", mode = "visual" },
     { path = "CandyVisuals", mode = "visual" },
 }
 
