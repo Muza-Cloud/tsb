@@ -427,6 +427,12 @@ local actions = {
         Transparency = 1,
         LocalTransparencyModifier = 1,
     }),
+    ghost = create_hider({
+        CastShadow = false,
+        CanCollide = false,
+        Transparency = 1,
+        LocalTransparencyModifier = 1,
+    }),
     effects = function(session, instance)
         suppress_effect(session, instance, false)
     end,
@@ -594,7 +600,7 @@ vm[3] = create_rule_starter({
 })
 
 vm[4] = create_rule_starter({
-    { path = "Map.Trees", mode = "destroy" },
+    { path = "Map.Trees", mode = "ghost" },
 })
 
 local sky_overrides = {
