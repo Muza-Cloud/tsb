@@ -14,6 +14,7 @@ local vm_labels = {
     "Gray Sky",
     "Custom Atmosphere",
     "FPS UnCap",
+    "FPS & Ping Display",
 }
 
 local function get_property(instance, property)
@@ -675,6 +676,234 @@ vm[7] = function(session)
             pcall(set_quality_level, previous_level)
         end)
     end
+end
+
+local players = game:GetService("Players")
+local run_service = game:GetService("RunService")
+local user_input_service = game:GetService("UserInputService")
+local tween_service = game:GetService("TweenService")
+
+vm[8] = function(session)
+    local player = players.LocalPlayer
+    local player_gui = player:WaitForChild("PlayerGui")
+    if not session.active then
+        return
+    end
+
+    local color_good = Color3.fromRGB(80, 255, 140)
+    local color_mid = Color3.fromRGB(255, 205, 70)
+    local color_bad = Color3.fromRGB(255, 85, 100)
+    local color_muted = Color3.fromRGB(140, 145, 165)
+
+    local screen_gui = Instance.new("ScreenGui")
+    screen_gui.Name = "fps_ping_counter"
+    screen_gui.ResetOnSpawn = false
+    screen_gui.Parent = player_gui
+    session:on_close(function()
+        screen_gui:Destroy()
+    end)
+
+    local main_frame = Instance.new("Frame")
+    main_frame.Name = "main_frame"
+    main_frame.Size = UDim2.new(0, 108, 0, 32)
+    main_frame.Position = UDim2.new(0.8, 0, 0, 50)
+    main_frame.BackgroundColor3 = Color3.fromRGB(20, 21, 30)
+    main_frame.BackgroundTransparency = 0.12
+    main_frame.BorderSizePixel = 0
+    main_frame.Active = true
+    main_frame.ClipsDescendants = true
+    main_frame.Parent = screen_gui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 9)
+    corner.Parent = main_frame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(70, 74, 100)
+    stroke.Thickness = 1
+    stroke.Transparency = 0.35
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Parent = main_frame
+
+    local background = Instance.new("UIGradient")
+    background.Rotation = 90
+    background.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 32, 46)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(14, 15, 22)),
+    })
+    background.Parent = main_frame
+
+    local scale = Instance.new("UIScale")
+    scale.Scale = 0.8
+    scale.Parent = main_frame
+
+    local accent = Instance.new("Frame")
+    accent.Name = "accent"
+    accent.Size = UDim2.new(1, 0, 0, 2)
+    accent.BackgroundColor3 = Color3.new(1, 1, 1)
+    accent.BorderSizePixel = 0
+    accent.Parent = main_frame
+
+    local accent_gradient = Instance.new("UIGradient")
+    accent_gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 200, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(110, 90, 255)),
+    })
+    accent_gradient.Parent = accent
+
+    local function create_label(name, text, font, text_size, position, size)
+        local label = Instance.new("TextLabel")
+        label.Name = name
+        label.Size = size
+        label.Position = position
+        label.BackgroundTransparency = 1
+        label.Text = text
+        label.TextColor3 = color_muted
+        label.Font = font
+        label.TextSize = text_size
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = main_frame
+        return label
+    end
+
+    local function create_dot(name, position)
+        local dot = Instance.new("Frame")
+        dot.Name = name
+        dot.Size = UDim2.new(0, 5, 0, 5)
+        dot.Position = position
+        dot.BackgroundColor3 = color_good
+        dot.BorderSizePixel = 0
+        dot.Parent = main_frame
+
+        local dot_corner = Instance.new("UICorner")
+        dot_corner.CornerRadius = UDim.new(1, 0)
+        dot_corner.Parent = dot
+        return dot
+    end
+
+    local fps_dot = create_dot("fps_dot", UDim2.new(0, 9, 0, 8))
+    create_label("fps_title", "FPS", Enum.Font.GothamBold, 10, UDim2.new(0, 18, 0, 4), UDim2.new(0, 28, 0, 12))
+    local fps_label = create_label("fps_value", "0", Enum.Font.Code, 13, UDim2.new(0, 9, 0, 14), UDim2.new(0, 36, 0, 16))
+
+    local divider = Instance.new("Frame")
+    divider.Name = "divider"
+    divider.Size = UDim2.new(0, 1, 0, 18)
+    divider.Position = UDim2.new(0, 47, 0, 8)
+    divider.BackgroundColor3 = Color3.fromRGB(70, 74, 100)
+    divider.BackgroundTransparency = 0.4
+    divider.BorderSizePixel = 0
+    divider.Parent = main_frame
+
+    local ping_dot = create_dot("ping_dot", UDim2.new(0, 54, 0, 8))
+    create_label("ping_title", "PING", Enum.Font.GothamBold, 10, UDim2.new(0, 63, 0, 4), UDim2.new(0, 38, 0, 12))
+    local ping_label = create_label("ping_value", "0 ms", Enum.Font.Code, 13, UDim2.new(0, 54, 0, 14), UDim2.new(0, 50, 0, 16))
+
+    tween_service:Create(scale, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+
+    local dragging = false
+    local drag_input
+    local drag_start
+    local start_position
+
+    session:connect(main_frame.InputBegan, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            drag_start = input.Position
+            start_position = main_frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    session:connect(main_frame.InputChanged, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            drag_input = input
+        end
+    end)
+
+    session:connect(user_input_service.InputChanged, function(input)
+        if input == drag_input and dragging then
+            local delta = input.Position - drag_start
+            main_frame.Position = UDim2.new(
+                start_position.X.Scale,
+                start_position.X.Offset + delta.X,
+                start_position.Y.Scale,
+                start_position.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    local color_tween = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local current_fps_color
+    local current_ping_color
+
+    local function apply_color(label, dot, color)
+        tween_service:Create(label, color_tween, { TextColor3 = color }):Play()
+        tween_service:Create(dot, color_tween, { BackgroundColor3 = color }):Play()
+    end
+
+    local displayed_fps
+    local displayed_ping
+    local shown_fps
+    local shown_ping
+
+    session:connect(run_service.RenderStepped, function(dt)
+        if dt <= 0 then
+            return
+        end
+
+        local fps = 1 / dt
+        local ping = player:GetNetworkPing() * 1000
+        displayed_fps = displayed_fps or fps
+        displayed_ping = displayed_ping or ping
+
+        local alpha = 1 - math.exp(-6 * dt)
+        displayed_fps = displayed_fps + (fps - displayed_fps) * alpha
+        displayed_ping = displayed_ping + (ping - displayed_ping) * alpha
+
+        local fps_value = math.floor(displayed_fps)
+        if fps_value ~= shown_fps then
+            shown_fps = fps_value
+            fps_label.Text = string.format("%d", fps_value)
+        end
+
+        local ping_value = math.floor(displayed_ping)
+        if ping_value ~= shown_ping then
+            shown_ping = ping_value
+            ping_label.Text = string.format("%d ms", ping_value)
+        end
+
+        local fps_color
+        if displayed_fps <= 25 then
+            fps_color = color_bad
+        elseif displayed_fps <= 40 then
+            fps_color = color_mid
+        else
+            fps_color = color_good
+        end
+
+        local ping_color
+        if displayed_ping <= 150 then
+            ping_color = color_good
+        elseif displayed_ping <= 250 then
+            ping_color = color_mid
+        else
+            ping_color = color_bad
+        end
+
+        if fps_color ~= current_fps_color then
+            current_fps_color = fps_color
+            apply_color(fps_label, fps_dot, fps_color)
+        end
+
+        if ping_color ~= current_ping_color then
+            current_ping_color = ping_color
+            apply_color(ping_label, ping_dot, ping_color)
+        end
+    end)
 end
 
 local function load_gui()
