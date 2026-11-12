@@ -672,7 +672,7 @@ vm[7] = function(session)
 end
 
 local function load_gui()
-    local url = "https://raw.githubusercontent.com/m7za/tsb/main/FixLagGui.lua"
+    local url = "https://raw.githubusercontent.com/Muza-Cloud/tsb/main/FixLagGui.lua"
 
     local ok, err = pcall(function()
         loadstring(game:HttpGet(url))()
