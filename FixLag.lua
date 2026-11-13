@@ -597,7 +597,7 @@ vm[2] = function(session)
 end
 
 vm[3] = createRuleStarter({
-    { path = "Thrown", mode = "visual", children = true },
+    { path = "Thrown", mode = "ghost", children = true },
 })
 
 vm[4] = createRuleStarter({
