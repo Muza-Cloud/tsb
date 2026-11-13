@@ -10,32 +10,33 @@ while not localPlayer do
     localPlayer = players.LocalPlayer
 end
 
-if not getgenv().fixlag_core then
+if not getgenv().fixLagCore then
     warn("[fixlag gui] fixlag core is not loaded")
     return
 end
 
-if getgenv().fixlag_core.destroy_gui then
-    pcall(getgenv().fixlag_core.destroy_gui)
+if getgenv().fixLagCore.destroyGui then
+    pcall(getgenv().fixLagCore.destroyGui)
 end
 
 local author = "Techinified"
+
 local theme = {
        panelTop = Color3.fromRGB(30, 33, 45),
     panelBottom = Color3.fromRGB(16, 17, 23),
-            row = Color3.fromRGB(33, 36, 49),
+             row = Color3.fromRGB(33, 36, 49),
        rowHover = Color3.fromRGB(42, 46, 62),
-         button = Color3.fromRGB(40, 44, 58),
+          button = Color3.fromRGB(40, 44, 58),
     buttonHover = Color3.fromRGB(54, 59, 76),
-           text = Color3.fromRGB(235, 237, 242),
+            text = Color3.fromRGB(235, 237, 242),
       textMuted = Color3.fromRGB(140, 147, 163),
-         danger = Color3.fromRGB(240, 110, 110),
+          danger = Color3.fromRGB(240, 110, 110),
     dangerHover = Color3.fromRGB(88, 40, 48),
-         accent = Color3.fromRGB(64, 196, 120),
+          accent = Color3.fromRGB(64, 196, 120),
       accentAlt = Color3.fromRGB(56, 189, 248),
       switchOff = Color3.fromRGB(70, 76, 92),
        switchOn = Color3.fromRGB(64, 196, 120),
-           knob = Color3.fromRGB(255, 255, 255),
+            knob = Color3.fromRGB(255, 255, 255),
      idleStroke = Color3.fromRGB(255, 255, 255),
          dotOff = Color3.fromRGB(88, 95, 112),
        logoText = Color3.fromRGB(14, 16, 22),
@@ -195,7 +196,7 @@ local function createToggleRow(feature, order)
         })
         tween(label, switchTween, { TextColor3 = nextLook.label })
         tween(dot, switchTween, { BackgroundColor3 = nextLook.dot })
-        feature:set_enabled(enabled)
+        feature:setEnabled(enabled)
     end)
 
     return row
@@ -520,16 +521,16 @@ local function attachGui(gui)
     end
 end
 
-local interfaceSession = getgenv().fixlag_core.session_class.new()
+local interfaceSession = getgenv().fixLagCore.sessionClass.new()
 local gui
 
-gui = createGui(getgenv().fixlag_core.features, interfaceSession, function()
-    task.spawn(getgenv().fixlag_core.shutdown)
+gui = createGui(getgenv().fixLagCore.features, interfaceSession, function()
+    task.spawn(getgenv().fixLagCore.shutdown)
 end)
 attachGui(gui)
 
-getgenv().fixlag_core.destroy_gui = function()
+getgenv().fixLagCore.destroyGui = function()
     interfaceSession:close()
     gui:Destroy()
-    getgenv().fixlag_core.destroy_gui = nil
+    getgenv().fixLagCore.destroyGui = nil
 end
