@@ -630,12 +630,10 @@ local halloween_decor = {
     "PileOfBones",
     "Pumpkin",
     "QuestionPumpkin",
-    "ScaledModel",
     "Smiley",
     "StarPumpkin",
     "StringLights",
     "StrongestPumpkin",
-    "TSBHalloween16",
     "Union",
     "XD",
 }
