@@ -597,12 +597,10 @@ vm[2] = function(session)
 end
 
 vm[3] = create_rule_starter({
-    { path = "Thrown", mode = "visual", children = true },
+    { path = "Thrown", mode = "ghost", children = true },
 })
 
--- Halloween: прямые дети Map.Halloween (подветки скрываются целиком). Circus намеренно НЕ в списке.
 local halloween_decor = {
-    "BlockLand",
     "BritishPumpkin",
     "CharacterChampionsDecoration",
     "Circle",
@@ -647,7 +645,7 @@ local decoration_rules = {
 }
 for _, name in ipairs(halloween_decor) do
     local escaped_name = string.gsub(name, "%.", "\\.")
-    decoration_rules[#decoration_rules + 1] = { path = "Map.Halloween." .. escaped_name, mode = "visual" }
+    decoration_rules[#decoration_rules + 1] = { path = "Map.Halloween." .. escaped_name, mode = "ghost" }
 end
 
 vm[4] = create_rule_starter(decoration_rules)
@@ -684,12 +682,12 @@ end
 
 vm[6] = function(session)
     session:lock(lighting, {
-        ClockTime = 12,
+        ClockTime = 14,
         GlobalShadows = false,
-        Brightness = 0.8,
+        Brightness = 0.9,
         OutdoorAmbient = Color3.fromRGB(120, 120, 120),
         Ambient = Color3.fromRGB(120, 120, 120),
-        ExposureCompensation = -0.2,
+        ExposureCompensation = -0.15,
         FogStart = 9e9,
         FogEnd = 9e9,
         ColorShift_Top = Color3.new(0, 0, 0),
